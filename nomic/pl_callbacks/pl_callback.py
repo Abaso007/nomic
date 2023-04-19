@@ -22,15 +22,15 @@ class AtlasLightningContainer:
             raise ValueError("Your logged embedding tensor must have shape (N,d)")
 
         #sanity check the inputs
-        for key in metadata:
-            if isinstance(metadata[key], torch.Tensor):
+        for key, value in metadata.items():
+            if isinstance(value, torch.Tensor):
                 metadata[key] = metadata[key].flatten().cpu().tolist()
             elif isinstance(metadata[key], np.ndarray):
                 metadata[key] = metadata[key].flatten().tolist()
-            else:
-                if not isinstance(metadata[key], list):
-                    if isinstance(metadata[key], float) or isinstance(metadata[key], int) or isinstance(metadata[key], str):
-                        metadata[key] = [metadata[key]]
+            elif not isinstance(metadata[key], list) and (
+                isinstance(metadata[key], (float, int, str))
+            ):
+                metadata[key] = [metadata[key]]
 
 
             if embeddings.shape[0] != len(metadata[key]):
@@ -116,7 +116,7 @@ class AtlasEmbeddingExplorer(Callback):
 
         keys = list(self.atlas.metadata.keys())
         if 'id' not in self.atlas.metadata:
-            self.atlas.metadata['id'] = [i for i in range(embeddings.shape[0])]
+            self.atlas.metadata['id'] = list(range(embeddings.shape[0]))
             keys.append('id')
 
         metadata = [dict(zip(keys, vals)) for vals in zip(*(self.atlas.metadata[k] for k in keys))]
@@ -125,10 +125,11 @@ class AtlasEmbeddingExplorer(Callback):
         for key in keys:
             if key == 'id':
                 continue
-            if isinstance(metadata[0][key], float) or \
-                    isinstance(metadata[0][key], int) or \
-                    key in ('class', 'label', 'target') or \
-                    len(set(self.atlas.metadata[key])) <= 10:
+            if (
+                isinstance(metadata[0][key], (float, int))
+                or key in ('class', 'label', 'target')
+                or len(set(self.atlas.metadata[key])) <= 10
+            ):
                 colorable_fields.append(key)
 
         try:

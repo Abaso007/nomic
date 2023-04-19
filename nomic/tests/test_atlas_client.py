@@ -32,21 +32,24 @@ def test_map_embeddings_with_errors():
 
     # test nested dictionaries
     with pytest.raises(Exception):
-        data = [{'key': {'nested_key': 'nested_value'}} for i in range(len(embeddings))]
+        data = [
+            {'key': {'nested_key': 'nested_value'}}
+            for _ in range(len(embeddings))
+        ]
         response = atlas.map_embeddings(
             embeddings=embeddings, data=data, name='UNITTEST1', is_public=True, reset_project_if_exists=True
         )
 
     # test underscore
     with pytest.raises(Exception):
-        data = [{'__hello': {'hello'}} for i in range(len(embeddings))]
+        data = [{'__hello': {'hello'}} for _ in range(len(embeddings))]
         response = atlas.map_embeddings(
             embeddings=embeddings, data=data, name='UNITTEST1', is_public=True, reset_project_if_exists=True
         )
 
     # test to long ids
     with pytest.raises(Exception):
-        data = [{'id': str(uuid.uuid4()) + 'a'} for i in range(len(embeddings))]
+        data = [{'id': f'{str(uuid.uuid4())}a'} for _ in range(len(embeddings))]
         response = atlas.map_embeddings(
             embeddings=embeddings,
             data=data,
@@ -60,7 +63,10 @@ def test_map_embeddings_with_errors():
 def test_map_embeddings():
     num_embeddings = 20
     embeddings = np.random.rand(num_embeddings, 10)
-    data = [{'field': str(uuid.uuid4()), 'id': str(uuid.uuid4())} for i in range(len(embeddings))]
+    data = [
+        {'field': str(uuid.uuid4()), 'id': str(uuid.uuid4())}
+        for _ in range(len(embeddings))
+    ]
 
     project = atlas.map_embeddings(
         embeddings=embeddings,
@@ -144,7 +150,10 @@ def test_map_text_errors():
 def test_map_embedding_progressive():
     num_embeddings = 100
     embeddings = np.random.rand(num_embeddings, 10)
-    data = [{'field': str(uuid.uuid4()), 'id': str(uuid.uuid4()), 'upload': 0.0} for i in range(len(embeddings))]
+    data = [
+        {'field': str(uuid.uuid4()), 'id': str(uuid.uuid4()), 'upload': 0.0}
+        for _ in range(len(embeddings))
+    ]
 
     project = atlas.map_embeddings(
         embeddings=embeddings,
@@ -157,7 +166,10 @@ def test_map_embedding_progressive():
     )
 
     embeddings = np.random.rand(num_embeddings, 10) + np.ones(shape=(num_embeddings, 10))
-    data = [{'field': str(uuid.uuid4()), 'id': str(uuid.uuid4()), 'upload': 1.0} for i in range(len(embeddings))]
+    data = [
+        {'field': str(uuid.uuid4()), 'id': str(uuid.uuid4()), 'upload': 1.0}
+        for _ in range(len(embeddings))
+    ]
 
     current_project = AtlasProject(name=project.name)
 
@@ -175,8 +187,14 @@ def test_map_embedding_progressive():
     with pytest.raises(Exception):
         # Try adding a bad field.
         with current_project.wait_for_project_lock():
-            data = [{'invalid_field': str(uuid.uuid4()), 'id': str(uuid.uuid4()), 'upload': 1.0} for i in
-                    range(len(embeddings))]
+            data = [
+                {
+                    'invalid_field': str(uuid.uuid4()),
+                    'id': str(uuid.uuid4()),
+                    'upload': 1.0,
+                }
+                for _ in range(len(embeddings))
+            ]
 
             current_project = AtlasProject(name=project.name)
 
@@ -298,4 +316,4 @@ def test_weird_inputs():
         build_topic_model=True
     )
     with p.wait_for_project_lock():
-        assert True
+        pass

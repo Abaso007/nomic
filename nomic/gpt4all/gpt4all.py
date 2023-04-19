@@ -10,7 +10,6 @@ try:
     import torch
 except ImportError:
     torch = None
-    pass
 
 class GPT4AllGPU():
     def __init__(self, llama_path=None):
@@ -76,7 +75,11 @@ class GPT4All():
         if force_download or not self.executable_path.exists():
             logger.info('Downloading executable...')
             self._download_executable()
-        if force_download or not (self.model_path.exists() and self.model_path.stat().st_size > 0):                                   
+        if (
+            force_download
+            or not self.model_path.exists()
+            or self.model_path.stat().st_size <= 0
+        ):                                   
             logger.info('Downloading model...')
             self._download_model()
 
@@ -90,9 +93,7 @@ class GPT4All():
         # This is so dumb, but today is not the day I learn C++.
         creation_args = [self.executable_path, '--model', self.model_path]
         for k, v in self.decoder_config.items():
-            creation_args.append(f"--{k}")
-            creation_args.append(str(v))
-        
+            creation_args.extend((f"--{k}", str(v)))
         self.bot = subprocess.Popen(creation_args,
                                     stdin=subprocess.PIPE,
                                     stdout=subprocess.PIPE)
@@ -109,42 +110,44 @@ class GPT4All():
         self.bot = None
 
     def _download_executable(self):
-        if not self.executable_path.exists():
-            plat = platform.platform()
-            if 'macOS' in plat and 'arm64' in plat:
-                upstream = 'https://static.nomic.ai/gpt4all/gpt4all-pywrap-mac-arm64'
-            elif 'Linux' in plat:
-                upstream = 'https://static.nomic.ai/gpt4all/gpt4all-pywrap-linux-x86_64'
-            else:
-                raise NotImplementedError(f"Your platform is not supported: {plat}. Current binaries supported are x86 Linux and ARM Macs.")
-            response = requests.get(upstream, stream=True)
-            if response.status_code == 200:
-                os.makedirs(self.executable_path.parent, exist_ok=True)
-                total_size = int(response.headers.get('content-length', 0))
-                with open(self.executable_path, "wb") as f:
-                    for chunk in tqdm(response.iter_content(chunk_size=8192), total=total_size // 8192, unit='KB'):
-                        f.write(chunk)
-                self.executable_path.chmod(0o755)                
-                print(f"File downloaded successfully to {self.executable_path}")
+        if self.executable_path.exists():
+            return
+        plat = platform.platform()
+        if 'macOS' in plat and 'arm64' in plat:
+            upstream = 'https://static.nomic.ai/gpt4all/gpt4all-pywrap-mac-arm64'
+        elif 'Linux' in plat:
+            upstream = 'https://static.nomic.ai/gpt4all/gpt4all-pywrap-linux-x86_64'
+        else:
+            raise NotImplementedError(f"Your platform is not supported: {plat}. Current binaries supported are x86 Linux and ARM Macs.")
+        response = requests.get(upstream, stream=True)
+        if response.status_code == 200:
+            os.makedirs(self.executable_path.parent, exist_ok=True)
+            total_size = int(response.headers.get('content-length', 0))
+            with open(self.executable_path, "wb") as f:
+                for chunk in tqdm(response.iter_content(chunk_size=8192), total=total_size // 8192, unit='KB'):
+                    f.write(chunk)
+            self.executable_path.chmod(0o755)                
+            print(f"File downloaded successfully to {self.executable_path}")
 
-            else:
-                print(f"Failed to download the file. Status code: {response.status_code}")
+        else:
+            print(f"Failed to download the file. Status code: {response.status_code}")
 
     def _download_model(self):
         # First download the quantized model.
 
-        if not self.model_path.exists():
-            response = requests.get(f'https://the-eye.eu/public/AI/models/nomic-ai/gpt4all/{self.model}.bin',
-                                    stream=True)
-            if response.status_code == 200:
-                os.makedirs(self.model_path.parent, exist_ok=True)
-                total_size = int(response.headers.get('content-length', 0))
-                with open(self.model_path, "wb") as f:
-                    for chunk in tqdm(response.iter_content(chunk_size=8192), total=total_size // 8192, unit='KB'):
-                        f.write(chunk)
-                print(f"File downloaded successfully to {self.model_path}")
-            else:
-                print(f"Failed to download the file. Status code: {response.status_code}")
+        if self.model_path.exists():
+            return
+        response = requests.get(f'https://the-eye.eu/public/AI/models/nomic-ai/gpt4all/{self.model}.bin',
+                                stream=True)
+        if response.status_code == 200:
+            os.makedirs(self.model_path.parent, exist_ok=True)
+            total_size = int(response.headers.get('content-length', 0))
+            with open(self.model_path, "wb") as f:
+                for chunk in tqdm(response.iter_content(chunk_size=8192), total=total_size // 8192, unit='KB'):
+                    f.write(chunk)
+            print(f"File downloaded successfully to {self.model_path}")
+        else:
+            print(f"Failed to download the file. Status code: {response.status_code}")
 
     def _parse_to_prompt(self, write_to_stdout = True):
         bot_says = ['']

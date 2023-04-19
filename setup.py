@@ -1,21 +1,19 @@
 '''Setup file for the Atlas Client'''
+
 import os
 import sys
 from setuptools import setup, find_packages
 description = 'The offical Nomic python client.'
 platform_gpt4all_deps = []
 
-if 'win' in sys.platform and sys.platform != 'darwin':
-    # We don't have prebuilt wheels for Windows yet.
-    pass
-else:
+if 'win' not in sys.platform or sys.platform == 'darwin':
     platform_gpt4all_deps = [
             'torch',
             'sentencepiece',
             f"transformers @ file://localhost/{os.getcwd()}/bin/transformers-4.28.0.dev0-py3-none-any.whl",
             f"peft @ file://localhost/{os.getcwd()}/bin/peft-0.3.0.dev0-py3-none-any.whl"
         ]
-    
+
 setup(
     name='nomic',
     version='1.1.6',

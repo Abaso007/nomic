@@ -68,12 +68,9 @@ class AtlasClass(object):
         self.header = {"Authorization": f"Bearer {token}"}
 
         if self.token:
-            response = requests.get(
-                self.atlas_api_path + "/v1/user",
-                headers=self.header,
-            )
+            response = requests.get(f"{self.atlas_api_path}/v1/user", headers=self.header)
             response = validate_api_http_response(response)
-            if not response.status_code == 200:
+            if response.status_code != 200:
                 logger.warning(str(response))
                 logger.info("Your authorization token is no longer valid.")
         else:
@@ -90,12 +87,9 @@ class AtlasClass(object):
         if self.atlas_api_path.startswith('https://api-atlas.nomic.ai'):
             api_base_path = "https://no-cdn-api-atlas.nomic.ai"
 
-        response = requests.get(
-            api_base_path + "/v1/user",
-            headers=self.header,
-        )
+        response = requests.get(f"{api_base_path}/v1/user", headers=self.header)
         response = validate_api_http_response(response)
-        if not response.status_code == 200:
+        if response.status_code != 200:
             raise ValueError("Your authorization token is no longer valid. Run `nomic login` to obtain a new one.")
 
         return response.json()
@@ -128,7 +122,7 @@ class AtlasClass(object):
 
     def _delete_project_by_id(self, project_id):
         response = requests.post(
-            self.atlas_api_path + "/v1/project/remove",
+            f"{self.atlas_api_path}/v1/project/remove",
             headers=self.header,
             json={'project_id': project_id},
         )
@@ -146,8 +140,7 @@ class AtlasClass(object):
         assert_valid_project_id(project_id)
 
         response = requests.get(
-            self.atlas_api_path + f"/v1/project/{project_id}",
-            headers=self.header,
+            f"{self.atlas_api_path}/v1/project/{project_id}", headers=self.header
         )
 
         if response.status_code != 200:
@@ -166,7 +159,7 @@ class AtlasClass(object):
         '''
 
         response = requests.get(
-            self.atlas_api_path + f"/v1/project/index/job/{job_id}",
+            f"{self.atlas_api_path}/v1/project/index/job/{job_id}",
             headers=self.header,
         )
 
@@ -191,18 +184,22 @@ class AtlasClass(object):
 
         '''
         if not isinstance(data, pa.Table):
-            raise Exception("Invalid data type for upload: {}".format(type(data)))
+            raise Exception(f"Invalid data type for upload: {type(data)}")
 
-        if project.meta['modality'] == 'text':
-            if "_embeddings" in data:
-                msg = "Can't add embeddings to a text project."
-                raise ValueError(msg)
-        if project.meta['modality'] == 'embedding':
-            if "_embeddings" not in data.column_names:
-                msg = "Must include embeddings in embedding project upload."
-                raise ValueError(msg)
+        if project.meta['modality'] == 'text' and "_embeddings" in data:
+            msg = "Can't add embeddings to a text project."
+            raise ValueError(msg)
+        if (
+            project.meta['modality'] == 'embedding'
+            and "_embeddings" not in data.column_names
+        ):
+            msg = "Must include embeddings in embedding project upload."
+            raise ValueError(msg)
 
-        if project.id_field == ATLAS_DEFAULT_ID_FIELD and not ATLAS_DEFAULT_ID_FIELD in data.column_names:
+        if (
+            project.id_field == ATLAS_DEFAULT_ID_FIELD
+            and ATLAS_DEFAULT_ID_FIELD not in data.column_names
+        ):
             data = data.append_column(ATLAS_DEFAULT_ID_FIELD, pa.array([str(uuid.uuid4()) for _ in range(len(data))]))
 
         if project.schema is None:
@@ -227,18 +224,20 @@ class AtlasClass(object):
                     assert pa.types.is_boolean(mask.type)
                     reformatted[field.name] = pc.replace_with_mask(reformatted[field.name], mask, "null")
         for field in data.schema:
-            if not field.name in reformatted:
+            if field.name not in reformatted:
                 if field.name == "_embeddings":
                     reformatted['_embeddings'] = data['_embeddings']
                 else:
                     logger.warning(f"Field {field.name} present in data, but not found in table schema. Ignoring.")
         data = pa.Table.from_pydict(reformatted, schema=project.schema)
-        
+
         if project.meta['insert_update_delete_lock']:
             raise Exception("Project is currently indexing and cannot ingest new datums. Try again later.")
 
         # The following two conditions should never occur given the above, but just in case...
-        assert project.id_field in data.column_names, f"Upload does not contain your specified id_field"
+        assert (
+            project.id_field in data.column_names
+        ), "Upload does not contain your specified id_field"
 
         if not pa.types.is_string(data[project.id_field].type):
             logger.warning(f"id_field is not a string. Converting to string from {data[project.id_field].type}")
@@ -246,11 +245,9 @@ class AtlasClass(object):
 
         if data[project.id_field].null_count > 0:            
             raise ValueError(f"{project.id_field} must not contain null values, but {data[project.id_field].null_count} found.")
-        
+
         for key in data.column_names:
-            if key.startswith('_'):
-                if key == '_embeddings':
-                    continue
+            if key.startswith('_') and key != '_embeddings':
                 raise ValueError('Metadata fields cannot start with _')
 
         if pc.max(pc.utf8_length(data[project.id_field])).as_py() > 36:
@@ -274,16 +271,16 @@ class AtlasClass(object):
         '''
 
         if organization_name is None:
-            if organization_id is None: #default to current users organization (the one with their name)
-                organization = self._get_current_users_main_organization()
-                organization_name = organization['nickname']
-                organization_id = organization['organization_id']
-            else:
+            if organization_id is not None:
                 raise NotImplementedError("Getting organization by a specific ID is not yet implemented.")
 
+            organization = self._get_current_users_main_organization()
+            organization_name = organization['nickname']
+            organization_id = organization['organization_id']
         else:
             organization_id_request = requests.get(
-                self.atlas_api_path + f"/v1/organization/search/{organization_name}", headers=self.header
+                f"{self.atlas_api_path}/v1/organization/search/{organization_name}",
+                headers=self.header,
             )
             if organization_id_request.status_code != 200:
                 user = self._get_current_user()
@@ -313,16 +310,17 @@ class AtlasClass(object):
 
         # check if this project already exists.
         response = requests.post(
-            self.atlas_api_path + "/v1/project/search/name",
+            f"{self.atlas_api_path}/v1/project/search/name",
             headers=self.header,
-            json={'organization_name': organization_name, 'project_name': project_name},
+            json={
+                'organization_name': organization_name,
+                'project_name': project_name,
+            },
         )
 
         if response.status_code != 200:
             raise Exception(f"Failed to find project: {response.text}")
-        search_results = response.json()['results']
-
-        if search_results:
+        if search_results := response.json()['results']:
             existing_project = search_results[0]
             existing_project_id = existing_project['id']
             return {
@@ -379,14 +377,13 @@ class AtlasProjection:
     @property
     def _status(self):
         response = requests.get(
-            self.project.atlas_api_path + f"/v1/project/index/job/progress/{self.atlas_index_id}",
+            f"{self.project.atlas_api_path}/v1/project/index/job/progress/{self.atlas_index_id}",
             headers=self.project.header,
         )
         if response.status_code != 200:
             raise Exception(response.text)
 
-        content = response.json()
-        return content
+        return response.json()
 
     def __str__(self):
         return f"{self.name}: {self.map_link}"
@@ -463,10 +460,10 @@ class AtlasProjection:
         '''
         dest = Path(dest)
         root = f'{self.project.atlas_api_path}/v1/project/public/{self.project.id}/index/projection/{self.id}/quadtree/'
-        quads = [f'0/0/0']
+        quads = ['0/0/0']
         all_quads = []
-        while len(quads) > 0:
-            quad = quads.pop(0) + ".feather"
+        while quads:
+            quad = f"{quads.pop(0)}.feather"
             all_quads.append(quad)
             path = dest / quad
             if not path.exists():
@@ -504,7 +501,7 @@ class AtlasProjection:
 
         def download_shard(offset, check_access=False):
             response = requests.get(
-                self.project.atlas_api_path + f"/v1/project/data/get/embedding/{self.project.id}/{self.atlas_index_id}/{offset}/{limit}",
+                f"{self.project.atlas_api_path}/v1/project/data/get/embedding/{self.project.id}/{self.atlas_index_id}/{offset}/{limit}",
                 headers=self.project.header,
             )
 
@@ -555,7 +552,7 @@ class AtlasProjection:
         limit = EMBEDDING_PAGINATION_LIMIT
         while True:
             response = requests.get(
-                self.atlas_api_path + f"/v1/project/data/get/embedding/{self.id}/{self.atlas_index_id}/{offset}/{limit}",
+                f"{self.atlas_api_path}/v1/project/data/get/embedding/{self.id}/{self.atlas_index_id}/{offset}/{limit}",
                 headers=self.header,
             )
             if response.status_code != 200:
@@ -594,9 +591,8 @@ class AtlasProjection:
         if k > max_k:
             raise Exception(f"Cannot query for more than {max_k} nearest neighbors. Set `k` to {max_k} or lower")
 
-        if ids is not None:
-            if len(ids) > max_queries:
-                raise Exception(f"Max ids per query is {max_queries}. You sent {len(ids)}.")
+        if ids is not None and len(ids) > max_queries:
+            raise Exception(f"Max ids per query is {max_queries}. You sent {len(ids)}.")
         if queries is not None:
             if not isinstance(queries, np.ndarray):
                 raise Exception("`queries` must be an instance of np.array.")
@@ -612,19 +608,25 @@ class AtlasProjection:
 
         if queries is not None:
             response = requests.post(
-                self.project.atlas_api_path + "/v1/project/data/get/nearest_neighbors/by_embedding",
+                f"{self.project.atlas_api_path}/v1/project/data/get/nearest_neighbors/by_embedding",
                 headers=self.project.header,
-                json={'atlas_index_id': self.atlas_index_id,
-                      'queries': base64.b64encode(bytesio.getvalue()).decode('utf-8'),
-                      'k': k},
+                json={
+                    'atlas_index_id': self.atlas_index_id,
+                    'queries': base64.b64encode(bytesio.getvalue()).decode(
+                        'utf-8'
+                    ),
+                    'k': k,
+                },
             )
         else:
             response = requests.post(
-                self.project.atlas_api_path + "/v1/project/data/get/nearest_neighbors/by_id",
+                f"{self.project.atlas_api_path}/v1/project/data/get/nearest_neighbors/by_id",
                 headers=self.project.header,
-                json={'atlas_index_id': self.atlas_index_id,
-                      'datum_ids': ids,
-                      'k': k},
+                json={
+                    'atlas_index_id': self.atlas_index_id,
+                    'datum_ids': ids,
+                    'k': k,
+                },
             )
 
 
@@ -647,12 +649,11 @@ class AtlasProjection:
 
         '''
         response = requests.get(
-            self.project.atlas_api_path + "/v1/project/{}/index/projection/{}".format(self.project.meta['id'], self.projection_id),
+            f"{self.project.atlas_api_path}/v1/project/{self.project.meta['id']}/index/projection/{self.projection_id}",
             headers=self.project.header,
         )
         topics = json.loads(response.text)['topic_models'][0]['features']
-        topic_data = [e['properties'] for e in topics]
-        return topic_data
+        return [e['properties'] for e in topics]
 
     def get_topic_density(self, time_field: str, start: datetime, end: datetime):
         '''
@@ -667,11 +668,13 @@ class AtlasProjection:
             List[{topic: str, count: int}] - A list of {topic, count} dictionaries, sorted from largest count to smallest count
         '''
         response = requests.post(
-            self.project.atlas_api_path + "/v1/project/{}/topic_density".format(self.atlas_index_id),
+            f"{self.project.atlas_api_path}/v1/project/{self.atlas_index_id}/topic_density",
             headers=self.project.header,
-            json={'start': start.isoformat(),
-                  'end': end.isoformat(),
-                  'time_field': time_field},
+            json={
+                'start': start.isoformat(),
+                'end': end.isoformat(),
+                'time_field': time_field,
+            },
         )
         if response.status_code != 200:
             raise Exception(response.text)
@@ -699,12 +702,14 @@ class AtlasProjection:
         np.save(bytesio, queries)
 
         response = requests.post(
-            self.project.atlas_api_path + "/v1/project/data/get/embedding/topic",
+            f"{self.project.atlas_api_path}/v1/project/data/get/embedding/topic",
             headers=self.project.header,
-            json={'atlas_index_id': self.atlas_index_id,
-                  'queries': base64.b64encode(bytesio.getvalue()).decode('utf-8'),
-                  'k': k,
-                  'depth': depth},
+            json={
+                'atlas_index_id': self.atlas_index_id,
+                'queries': base64.b64encode(bytesio.getvalue()).decode('utf-8'),
+                'k': k,
+                'depth': depth,
+            },
         )
 
         if response.status_code != 200:
@@ -729,9 +734,13 @@ class AtlasProjection:
             raise ValueError("You must specify a list of ids when getting data.")
 
         response = requests.post(
-            self.project.atlas_api_path + "/v1/project/atoms/get",
+            f"{self.project.atlas_api_path}/v1/project/atoms/get",
             headers=self.project.header,
-            json={'project_id': self.project.id, 'index_id': self.atlas_index_id, 'atom_ids': ids},
+            json={
+                'project_id': self.project.id,
+                'index_id': self.atlas_index_id,
+                'atom_ids': ids,
+            },
         )
 
         if response.status_code == 200:
@@ -748,7 +757,7 @@ class AtlasProjection:
         '''
         # now get the tags
         datums_and_tags = requests.post(
-            self.project.atlas_api_path + '/v1/project/tag/read/all_by_datum',
+            f'{self.project.atlas_api_path}/v1/project/tag/read/all_by_datum',
             headers=self.project.header,
             json={
                 'project_id': self.project.id,
@@ -784,7 +793,11 @@ class AtlasProjection:
 
         headers = self.project.header.copy()
         headers['Content-Type'] = 'application/octet-stream'
-        response = requests.post(self.project.atlas_api_path + "/v1/project/tag/add", headers=headers, data=payload)
+        response = requests.post(
+            f"{self.project.atlas_api_path}/v1/project/tag/add",
+            headers=headers,
+            data=payload,
+        )
         if response.status_code != 200:
             raise Exception("Failed to add tags")
 
@@ -814,7 +827,11 @@ class AtlasProjection:
 
         headers = self.project.header.copy()
         headers['Content-Type'] = 'application/octet-stream'
-        response = requests.post(self.project.atlas_api_path + "/v1/project/tag/delete", headers=headers, data=payload)
+        response = requests.post(
+            f"{self.project.atlas_api_path}/v1/project/tag/delete",
+            headers=headers,
+            data=payload,
+        )
         if response.status_code != 200:
             raise Exception("Failed to delete tags")
 
@@ -955,9 +972,7 @@ class AtlasProject(AtlasClass):
 
         supported_modalities = ['text', 'embedding']
         if modality not in supported_modalities:
-            msg = 'Tried to create project with modality: {}, but Atlas only supports: {}'.format(
-                modality, supported_modalities
-            )
+            msg = f'Tried to create project with modality: {modality}, but Atlas only supports: {supported_modalities}'
             raise ValueError(msg)
 
         if unique_id_field is None:
@@ -966,9 +981,9 @@ class AtlasProject(AtlasClass):
         if description is None:
             description = ""
         response = requests.post(
-            self.atlas_api_path + "/v1/project/create",
+            f"{self.atlas_api_path}/v1/project/create",
             headers=self.header,
-            json = {
+            json={
                 'organization_id': organization_id,
                 'project_name': project_name,
                 'description': description,
@@ -979,7 +994,7 @@ class AtlasProject(AtlasClass):
         )
         if response.status_code != 201:
             raise Exception(f"Failed to create project: {response.json()}")
-        
+
         return response.json()['project_id']
 
 
@@ -1011,8 +1026,7 @@ class AtlasProject(AtlasClass):
     def projections(self) -> List[AtlasProjection]:
         output = []
         for index in self.indices:
-            for projection in index.projections:
-                output.append(projection)
+            output.extend(iter(index.projections))
         return output
 
     @property
@@ -1122,9 +1136,8 @@ class AtlasProject(AtlasClass):
         if len(indices) > 1 and name is None:
             raise ValueError("You have multiple maps in this project, specify a name.")
 
-        if len(indices) == 1:
-            if len(indices[0].projections) == 1:
-                return indices[0].projections[0]
+        if len(indices) == 1 and len(indices[0].projections) == 1:
+            return indices[0].projections[0]
 
         for index in indices:
             if index.name == name:
@@ -1168,13 +1181,12 @@ class AtlasProject(AtlasClass):
         self._latest_project_state()
 
         # for large projects, alter the default projection configurations.
-        if self.total_datums >= 1_000_000:
-            if (
-                projection_epochs == DEFAULT_PROJECTION_EPOCHS
-                and projection_n_neighbors == DEFAULT_PROJECTION_N_NEIGHBORS
-            ):
-                projection_n_neighbors = DEFAULT_LARGE_PROJECTION_N_NEIGHBORS
-                projection_epochs = DEFAULT_LARGE_PROJECTION_EPOCHS
+        if self.total_datums >= 1_000_000 and (
+            projection_epochs == DEFAULT_PROJECTION_EPOCHS
+            and projection_n_neighbors == DEFAULT_PROJECTION_N_NEIGHBORS
+        ):
+            projection_n_neighbors = DEFAULT_LARGE_PROJECTION_N_NEIGHBORS
+            projection_epochs = DEFAULT_LARGE_PROJECTION_EPOCHS
 
         if self.modality == 'embedding':
             build_template = {
@@ -1200,8 +1212,8 @@ class AtlasProject(AtlasClass):
 
             #find the index id of the index with name reuse_embeddings_from_index
             reuse_embedding_from_index_id = None
-            indices = self.indices
             if reuse_embeddings_from_index is not None:
+                indices = self.indices
                 for index in indices:
                     if index.name == reuse_embeddings_from_index:
                         reuse_embedding_from_index_id = index.id
@@ -1215,10 +1227,7 @@ class AtlasProject(AtlasClass):
             if indexed_field not in self.project_fields:
                 raise Exception(f"Indexing on {indexed_field} not allowed. Valid options are: {self.project_fields}")
 
-            model = 'NomicEmbed'
-            if multilingual:
-                model = 'NomicEmbedMultilingual'
-
+            model = 'NomicEmbedMultilingual' if multilingual else 'NomicEmbed'
             build_template = {
                 'project_id': self.id,
                 'index_name': name,
@@ -1247,19 +1256,19 @@ class AtlasProject(AtlasClass):
             }
 
         response = requests.post(
-            self.atlas_api_path + "/v1/project/index/create",
+            f"{self.atlas_api_path}/v1/project/index/create",
             headers=self.header,
             json=build_template,
         )
         if response.status_code != 200:
-            logger.info('Create project failed with code: {}'.format(response.status_code))
-            logger.info('Additional info: {}'.format(response.text))
+            logger.info(f'Create project failed with code: {response.status_code}')
+            logger.info(f'Additional info: {response.text}')
             raise Exception(response.json()['detail'])
 
         job_id = response.json()['job_id']
 
         job = requests.get(
-            self.atlas_api_path + f"/v1/project/index/job/{job_id}",
+            f"{self.atlas_api_path}/v1/project/index/job/{job_id}",
             headers=self.header,
         ).json()
 
@@ -1306,7 +1315,7 @@ class AtlasProject(AtlasClass):
                     complete_projections.append(projection)
                 html += f"""<li>{projection.name}. Status {state}. <a target="_blank" href="{projection.map_link}">view online</a></li>"""   
             html += "</ul>"
-        if len(complete_projections) >= 1:
+        if complete_projections:
             # Display most recent complete projection.
             html += "<hr>"
             html += complete_projections[-1]._embed_html()
@@ -1332,13 +1341,13 @@ class AtlasProject(AtlasClass):
         if isinstance(ids[0], list):
             raise ValueError("You must specify a list of ids when getting data, not a nested list.")
         response = requests.post(
-            self.atlas_api_path + "/v1/project/data/get",
+            f"{self.atlas_api_path}/v1/project/data/get",
             headers=self.header,
             json={'project_id': self.id, 'datum_ids': ids},
         )
 
         if response.status_code == 200:
-            return [item for item in response.json()['datums']]
+            return list(response.json()['datums'])
         else:
             raise Exception(response.text)
 
@@ -1357,7 +1366,7 @@ class AtlasProject(AtlasClass):
             raise ValueError("You must specify a list of ids when deleting datums.")
 
         response = requests.post(
-            self.atlas_api_path + "/v1/project/data/delete",
+            f"{self.atlas_api_path}/v1/project/data/delete",
             headers=self.header,
             json={'project_id': self.id, 'datum_ids': ids},
         )
@@ -1476,7 +1485,7 @@ class AtlasProject(AtlasClass):
         # Chunk into 4MB pieces. These will probably compress down a bit.
         if bytesize / n_chunks > 4_000_000:
             shard_size = int(np.ceil(nrow / (bytesize / 4_000_000)))
-        
+
 
         data = self._validate_and_correct_arrow_upload(
                 data=data,
@@ -1505,7 +1514,7 @@ class AtlasProject(AtlasClass):
         close_pbar = False
         if pbar is None:
             close_pbar = True
-            pbar = tqdm(total=int(len(data)) // shard_size)
+            pbar = tqdm(total=len(data) // shard_size)
         failed = 0
         succeeded = 0
         errors_504 = 0
@@ -1641,11 +1650,11 @@ class AtlasProject(AtlasClass):
         '''
 
         response = requests.post(
-            self.atlas_api_path + "/v1/project/update_indices",
+            f"{self.atlas_api_path}/v1/project/update_indices",
             headers=self.header,
             json={
                 'project_id': self.id,
-                'rebuild_topic_models': rebuild_topic_models
+                'rebuild_topic_models': rebuild_topic_models,
             },
         )
 
